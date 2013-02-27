@@ -9,7 +9,7 @@ class Readability
   end
 
 
-  def initialize(htmlPage)
+  def initialize(html_page)
     @regexps = {:unlikelyCandidates => /combx|comment|disqus|extra|foot|header|menu|remark|rss|shoutbox|sidebar|sponsor|ad-break|agegate|pagination|pager|popup/i,
                 :okMaybeItsACandidate =>  /and|article|body|column|main|shadow/i,
                 :divToPElements => /<(a|blockquote|dl|div|img|ol|p|pre|table|ul)/i,
@@ -21,22 +21,22 @@ class Readability
                 :nextLink => /(next|weiter|continue|>([^\|]|$)|([^\|]|$))/i,
                 :prevLink =>/(prev|earl|old|new|<)/i
       }
-    @url = htmlPage
-    @htmlDoc = Nokogiri::HTML(open(htmlPage))
+    @url = html_page
+    @html_doc = Nokogiri::HTML(open(html_page))
     @document = Nokogiri::XML::Document.new
   end
 
-  def getArticleTitle  
-    @htmlDoc.xpath('//title').text
+  def get_article_title  
+    @html_doc.xpath('//title').text
     #potentially add more smarts here to handle junk titles. i.e. where titles are longer than 150 chars or less than 10
     # in that case jsut use the first H1 that you find.
   end
   
-  def grabArticle
+  def grab_article
     
-    @body = @htmlDoc.xpath('//body').first
+    @body = @html_doc.xpath('//body').first
     count= 0
-    nodesToScore = []
+    nodes_to_score = []
     
     @body.traverse do |node|
       #Remove unlikely candidates  
@@ -48,15 +48,15 @@ class Readability
        %w(IMG A OBJECT SCRIPT IFRAME).each {|t| node.remove if node.name.upcase == t } 
       
       
-      %w(P TD PRE).each {|t| nodesToScore << node if node.name.upcase == t } 
+      %w(P TD PRE).each {|t| nodes_to_score << node if node.name.upcase == t } 
 
       if node.name.upcase == 'DIV'
         if node.inner_html.index(@regexps[:divToPElements]) == nil
-          newNode = Nokogiri::XML::Node.new("p", node.document)
-          newNode.content = node.inner_html
-          #puts newNode.inner_html
-          #node.replace(newNode) 
-          nodesToScore << newNode   
+          new_node = Nokogiri::XML::Node.new("p", node.document)
+          new_node.content = node.inner_html
+          #puts new_node.inner_html
+          #node.replace(new_node) 
+          nodes_to_score << new_node   
         elsif node.inner_html.empty?
           node.remove
         end   
@@ -64,42 +64,42 @@ class Readability
     end
   
     candidates = []
-    nodesToScore.each do |node|
-      parentNode = node.parent
-      grandParentNode = parentNode ? parentNode.parent : nil
-      innerText = node.content
+    nodes_to_score.each do |node|
+      parent_node = node.parent
+      grandparent_node = parent_node ? parent_node.parent : nil
+      inner_text = node.content
       
-      next if parentNode.nil? 
-      next if innerText.length < 25
+      next if parent_node.nil? 
+      next if inner_text.length < 25
       
       # Initialize readability data for the parent. 
-      if !parentNode.readability
-        initializeNode(parentNode)
-        candidates.push(parentNode)
+      if !parent_node.readability
+        initialize_node(parent_node)
+        candidates.push(parent_node)
       end
      
-      if !grandParentNode.nil? && !grandParentNode.readability
-        initializeNode(grandParentNode)
-        candidates.push(grandParentNode)
+      if !grandparent_node.nil? && !grandparent_node.readability
+        initialize_node(grandparent_node)
+        candidates.push(grandparent_node)
       end
       
-      contentScore = 0
-      contentScore++
-      contentScore += innerText.split(',').length
-      contentScore += (innerText.length / 100) < 3 ? (innerText.length / 100) : 3
+      content_score = 0
+      content_score++
+      content_score += inner_text.split(',').length
+      content_score += (inner_text.length / 100) < 3 ? (inner_text.length / 100) : 3
       
-      if parentNode
-        parentNode.readability[:contentScore] += contentScore
+      if parent_node
+        parent_node.readability[:content_score] += content_score
       end
       
-      if grandParentNode
-        grandParentNode.readability[:contentScore] += contentScore/2
+      if grandparent_node
+        grandparent_node.readability[:content_score] += content_score/2
       end
     end
     
-    topCandidate = nil
+    top_candidate = nil
     candidates.each do |candidate|
-      candidate.readability[:contentScore] = candidate.readability[:contentScore] * (1 - getLinkDensity(candidate))
+      candidate.readability[:content_score] = candidate.readability[:content_score] * (1 - get_link_density(candidate))
       
       p "Candidate: " << candidate.name 
       if candidate['class']
@@ -109,88 +109,88 @@ class Readability
         p ":" << candidate['id']
       end
       p ") with score " 
-      p candidate.readability[:contentScore]
+      p candidate.readability[:content_score]
       
-      if (!topCandidate || candidate.readability[:contentScore] > topCandidate.readability[:contentScore]) 
-        topCandidate = candidate
+      if !top_candidate || candidate.readability[:content_score] > top_candidate.readability[:content_score] 
+        top_candidate = candidate
       end
     end
     
-    articleContent = Nokogiri::XML::Node.new("div", @document)
+    article_content = Nokogiri::XML::Node.new("div", @document)
     
     #xxx
-    if topCandidate.blank?
+    if top_candidate.blank?
       "nil"
     else
-      if topCandidate.parent.blank?
+      if top_candidate.parent.blank?
         'nil'
       else
-        siblingScoreThreshold = 10 > topCandidate.readability[:contentScore] * 0.2 ? 10 : topCandidate.readability[:contentScore] * 0.2
-        siblingNodes = topCandidate.parent.children
+        sibling_score_threshold = 10 > top_candidate.readability[:content_score] * 0.2 ? 10 : top_candidate.readability[:content_score] * 0.2
+        sibling_node = top_candidate.parent.children
     
-        siblingNodes.each do |sibling|
+        sibling_node.each do |sibling|
       
           append = false
       
           next if !sibling
       
-          append = true if sibling == topCandidate
+          append = true if sibling == top_candidate
       
-          contentBonus = 0
+          content_bonus = 0
           # Give a bonus if sibling nodes and top candidates have the example same classname */
-          if sibling['class'] == topCandidate['class'] && topCandidate['class'] != ""
-            contentBonus += topCandidate.readability[:contentScore] * 0.2
+          if sibling['class'] == top_candidate['class'] && top_candidate['class'] != ""
+            content_bonus += top_candidate.readability[:content_score] * 0.2
           end
       
-          if sibling.readability && (sibling.readability[:contentScore] + contentBonus) >= siblingScoreThreshold
+          if sibling.readability && (sibling.readability[:content_score] + content_bonus) >= sibling_score_threshold
               append = true
           end
       
-          if(sibling.name == "P") 
-            linkDensity = getLinkDensity(sibling)
-            nodeContent = sibling.text
-            nodeLength  = nodeContent.length
+          if sibling.name == "P"
+            link_density = get_link_density(sibling)
+            node_content = sibling.text
+            node_length  = node_content.length
 
-            if(nodeLength > 80 && linkDensity < 0.25)
+            if node_length > 80 && link_density < 0.25
               append = true
-            elsif (nodeLength < 80 && linkDensity == 0 && nodeContent =~ /\.( |$)/ )
+            elsif node_length < 80 && link_density == 0 && node_content =~ /\.( |$)/ 
               append = true
             end
           end
                       
           if append
-          #  p articleContent.inner_html
-            articleContent.add_child(sibling)
+          #  p article_content.inner_html
+            article_content.add_child(sibling)
           end
       
         end
-        articleContent
+        article_content
       end
     end
   end
 
-  def getLinkDensity(node)
+  def get_link_density(node)
         links = node.css('a')
-        textLength = node.content.length
-        linkLength = 0;
+        text_length = node.content.length
+        link_length = 0
         links.each do | link |
-            linkLength += link.text.length;
+            link_length += link.text.length
         end      
 
-        return linkLength / textLength;
+        link_length / text_length
   end
 
 
-  def initializeNode (node) 
-        node.readability = {:contentScore => 0}         
+  def initialize_node (node) 
+        node.readability = {:content_score => 0}         
 
         case node.name 
             when 'DIV'
-                node.readability[:contentScore] += 5
+                node.readability[:content_score] += 5
             when 'PRE'
             when 'TD'
             when 'BLOCKQUOTE'
-                node.readability[:contentScore] += 3
+                node.readability[:content_score] += 3
             when 'ADDRESS'
             when 'OL'
             when 'UL'
@@ -199,7 +199,7 @@ class Readability
             when 'DT'
             when 'LI'
             when 'FORM'
-                node.readability[:contentScore] -= 3
+                node.readability[:content_score] -= 3
             when 'H1'
             when 'H2'
             when 'H3'
@@ -207,13 +207,13 @@ class Readability
             when 'H5'
             when 'H6'
             when 'TH'
-                node.readability[:contentScore] -= 5
+                node.readability[:content_score] -= 5
         end
        
-        node.readability[:contentScore] += getClassWeight(node);
+        node.readability[:content_score] += get_class_weight(node)
   end
-  
-  def getClassWeight (node) 
+
+  def get_class_weight (node) 
     weight = 0
 
     # Look for a special classname 
@@ -234,27 +234,27 @@ class Readability
       weight += 25 
     end
 
-    return weight
+    weight
   end
   
-  def grabArticleTextOnly
+  def grab_article_text_only
     grabArticle.to_str.strip.gsub(/<div.*>|<p.*>|<table.*>|<tr.*>|\n|\t|\r/, '').squeeze(" ").gsub(/[^a-zA-z\s]/,'')
   end
 
-  def getNextPageLink
-    allLinks = @htmlDoc.css('a')
-    baseURL = @url.scan(/^(http:\/\/[\w\d\-\.]+)(\/.*)$/).first.first
+  def get_next_page_link
+    all_links = @html_doc.css('a')
+    base_url = @url.scan(/^(http:\/\/[\w\d\-\.]+)(\/.*)$/).first.first
     
-    p baseURL
+    p base_url
     
     possible = {}
-    allLinks.each do |link|
+    all_links.each do |link|
       
       href = link['href']
       
-      next if link.text =~ @regexps[:extraneous] || link.text.length > 25 || href.match(baseURL) == nil || href.sub(baseURL, '').match(/\d/) == nil
+      next if link.text =~ @regexps[:extraneous] || link.text.length > 25 || href.match(base_url) == nil || href.sub(base_url, '').match(/\d/) == nil
 
-      linkHrefLeftOver = href.sub(baseURL, '')
+      link_href_left_over = href.sub(base_url, '')
       
       if !possible.key? href 
         possible[href] = { :score => 0, :linkText => link.text, :href => href }
@@ -262,41 +262,41 @@ class Readability
         possible[href][:linkText] << link.text
       end
       
-      ourLink = possible[href]
-      linkData = link.text
-      linkData << link['id'] if link['id']
-      linkData << link['class'] if link['class']
+      our_link = possible[href]
+      link_data = link.text
+      link_data << link['id'] if link['id']
+      link_data << link['class'] if link['class']
       
-      ourLink[:score] -= 25 if !href.include? baseURL 
+      our_link[:score] -= 25 if !href.include? base_url 
             
-      ourLink[:score] += 50 if linkData =~ @regexps[:nextLink]
+      our_link[:score] += 50 if link_data =~ @regexps[:nextLink]
       
-      ourLink[:score] += 25 if linkData =~ /pag(e|ing|inat)/i
+      our_link[:score] += 25 if link_data =~ /pag(e|ing|inat)/i
       
-      ourLink[:score] -= 65 if linkData =~ /(first|last)/i && !link.text =~ @regexps[:nextLink]
+      our_link[:score] -= 65 if link_data =~ /(first|last)/i && !link.text =~ @regexps[:nextLink]
       
-      ourLink[:score] -= 50 if linkData =~ @regexps[:extraneous] || linkData =~ @regexps[:negative]
+      our_link[:score] -= 50 if link_data =~ @regexps[:extraneous] || link_data =~ @regexps[:negative]
       
-      ourLink[:score] -= 200 if linkData =~ @regexps[:prevLink]
+      our_link[:score] -= 200 if link_data =~ @regexps[:prevLink]
       
       parent = link.parent
-      positiveMatch = false
-      negativeMatch = false
+      positive_match = false
+      negative_match = false
       
       while !parent.is_a? Nokogiri::HTML::Document do
         
-        parentClassAndId = '' 
-        parentClassAndId  << parent['class'] if !parent['class'].nil?
-        parentClassAndId << parent['id'] if !parent['id'].nil?
+        parent_class_and_id = '' 
+        parent_class_and_id  << parent['class'] if !parent['class'].nil?
+        parent_class_and_id << parent['id'] if !parent['id'].nil?
         
-        if !positiveMatch && parentClassAndId && parentClassAndId =~ /pag(e|ing|inat)/i
-          positiveMatch = true
-          ourLink[:score] += 25
+        if !positive_match && parent_class_and_id && parent_class_and_id =~ /pag(e|ing|inat)/i
+          positive_match = true
+          our_link[:score] += 25
         end
-        if !negativeMatch && parentClassAndId && parentClassAndId =~ @regexps[:negative]
-          if !parentClassAndId =~ @regexps[:positive]
-            ourLink[:score] -= 25
-            negativeMatch = true 
+        if !negative_match && parent_class_and_id && parent_class_and_id =~ @regexps[:negative]
+          if !parent_class_and_id =~ @regexps[:positive]
+            our_link[:score] -= 25
+            negative_match = true 
           end
         end
         
@@ -304,15 +304,15 @@ class Readability
         
       end
       
-      ourLink[:score] += 25 if href =~ /p(a|g|ag)?(e|ing|ination)?(=|\/)[0-9]{1,2}/i || href =~ /(page|paging)/i
+      our_link[:score] += 25 if href =~ /p(a|g|ag)?(e|ing|ination)?(=|\/)[0-9]{1,2}/i || href =~ /(page|paging)/i
       
-      ourLink[:score] -= 15 if href =~ @regexps[:extraneous]
+      our_link[:score] -= 15 if href =~ @regexps[:extraneous]
       
       if link.text.to_i
         if link.text.to_i == 1
-          ourLink[:score] -= 15 
+          our_link[:score] -= 15 
         else
-          ourLink[:score] += [0, 10 - link.text.to_i].max
+          our_link[:score] += [0, 10 - link.text.to_i].max
         end
       end
       
@@ -324,11 +324,14 @@ class Readability
     end
   end
   
-  def grabEntireArticle
-    grabArticleTextOnly
+  def grab_entire_article
+    grab_article_text_only
     
-    #while getNextPageLink
+    #while get_next_page_link
     
   end
 
 end
+
+r = Readability.new('http://www.abc.net.au/news/2013-02-28/police-seize-australia27s-biggest-ever-ice-haul/4544306')
+p r.grab_entire_article
